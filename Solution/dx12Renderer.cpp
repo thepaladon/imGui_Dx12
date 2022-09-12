@@ -28,6 +28,10 @@ bool dx12Renderer::Initialize()
     BuildBoxGeometry();
     BuildPSO();
 
+    HWND* trash = reinterpret_cast<HWND*>(0xdeadbeefa5541321);
+
+    imguiHandler.SetHwnd(&mhMainWnd);
+    imguiHandler.SetHwnd(trash);
     imguiHandler.GetData(md3dDevice.Get(), 2, DXGI_FORMAT_R8G8B8A8_UNORM, mCbvHeap.Get());
     if(!imguiHandler.InitializeImGui())
     {
@@ -59,9 +63,8 @@ void dx12Renderer::Update(const GameTimer& gt)
     //For now updates camera parameters, later will be used for backend
 
     imguiHandler.StartNewFrame();
-    ImGui::ShowDemoWindow();
 
-
+    
     //TODO: MOVE TO CAMERA CLASS
     // Convert Spherical to Cartesian coordinates.
     float x = mRadius * sinf(mPhi) * cosf(mTheta);
@@ -87,120 +90,105 @@ void dx12Renderer::Update(const GameTimer& gt)
 }
 
 
-void dx12Renderer::ImGuiDraw()
+void dx12Renderer::ImGuiDraw(Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> cmd)
 {
+    ImGui::ShowDemoWindow();
+
+    ImGui::EndFrame();
 
     ImGui::Render();
-
-    ThrowIfFailed(mDirectCmdListAlloc->Reset());
-
-    D3D12_RESOURCE_BARRIER barrier = {};
-    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    barrier.Transition.pResource = CurrentBackBuffer();
-    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-    ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), mPSO.Get()));
-    mCommandList->ResourceBarrier(1, &barrier);
-
-    mCommandList->ClearRenderTargetView(CurrentBackBufferView(), Colors::DarkRed, 0, nullptr);
-    mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), false, NULL);
 
     ID3D12DescriptorHeap* descriptorHeaps[] = { mCbvHeap.Get() };
     mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
     ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
 
-    mCommandList->RSSetViewports(1, &mScreenViewport);
-    // scissors rectangle is used to cover, for example, UI areas, so the pixels in this area of screen are not rendered (optimization)
-    mCommandList->RSSetScissorRects(1, &mScissorRect);
-
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
-    mCommandList->ResourceBarrier(1, &barrier);
-    ThrowIfFailed(mCommandList->Close());
-
-    ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
-    mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
-
-    mCurrBackBuffer = (mCurrBackBuffer + 1) % SwapChainBufferCount;
-    mSwapChain->Present(1, 0);
-
-    FlushCommandQueue();
+    //FlushCommandQueue();
 }
 void dx12Renderer::Draw(const GameTimer& gt)
 {
-    ImGuiDraw();
+    //ImGui::ShowDemoWindow();
 
-    //// Reuse the memory associated with command recording.
-    //// We can only reset when the associated command lists have finished execution on the GPU.
-    //ThrowIfFailed(mDirectCmdListAlloc->Reset());
-    //
-    //// A command list can be reset after it has been added to the command queue via ExecuteCommandList.
-    //// Reusing the command list reuses memory.
-    //ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), mPSO.Get()));
-    //
-    //mCommandList->RSSetViewports(1, &mScreenViewport);
-    //// scissors rectangle is used to cover, for example, UI areas, so the pixels in this area of screen are not rendered (optimization)
-    //mCommandList->RSSetScissorRects(1, &mScissorRect);
-    //
-    //// Indicate a state transition on the resource usage.
-    //mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
-    //    D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
-    //
-    //// Clear the back buffer and depth buffer.
-    ////Depth buffer is used for dynamic shadows
-    //mCommandList->ClearRenderTargetView(CurrentBackBufferView(), Colors::PaleVioletRed, 0, nullptr);
-    //mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
-    //
-    //// Specify the buffers we are going to render to.
-    //mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
-    //
-    ////Executing commands based on the previously initialized values
-    //ID3D12DescriptorHeap* descriptorHeaps[] = { mCbvHeap.Get() };
-    //mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-    //
-    //mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
-    //
-    //mCommandList->IASetVertexBuffers(0, 1, &mBoxGeo->VertexBufferView());
-    //mCommandList->IASetIndexBuffer(&mBoxGeo->IndexBufferView());
-    //
-    ////Will have to be changed to line list for the PhysX, for meshes triangles
-    //mCommandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    //
-    //mCommandList->SetGraphicsRootDescriptorTable(0, mCbvHeap->GetGPUDescriptorHandleForHeapStart());
-    //
-    ////Example of how to do instancing (later)
-    ////Draws one  instance of submesh "box" of Box mesh, using index array (not only vertex)
-    //mCommandList->DrawIndexedInstanced(
-    //    mBoxGeo->DrawArgs["box"].IndexCount,
-    //    1, 0, 0, 0);
-    //
-    //// Indicate a state transition on the resource usage.
-    //mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
-    //    D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
-    //
-    //// Done recording commands.
+    // Reuse the memory associated with command recording.
+    // We can only reset when the associated command lists have finished execution on the GPU.
+    ThrowIfFailed(mDirectCmdListAlloc->Reset());
+    
+    // A command list can be reset after it has been added to the command queue via ExecuteCommandList.
+    // Reusing the command list reuses memory.
+    ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), mPSO.Get()));
+    
+    mCommandList->RSSetViewports(1, &mScreenViewport);
+    // scissors rectangle is used to cover, for example, UI areas, so the pixels in this area of screen are not rendered (optimization)
+    mCommandList->RSSetScissorRects(1, &mScissorRect);
+    
+    // Indicate a state transition on the resource usage.
+    mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
+        D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
+    
+    // Clear the back buffer and depth buffer.
+    //Depth buffer is used for dynamic shadows
+    mCommandList->ClearRenderTargetView(CurrentBackBufferView(), Colors::PaleVioletRed, 0, nullptr);
+    mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+    
+    // Specify the buffers we are going to render to.
+    mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
+    
+    //Executing commands based on the previously initialized values
+    ID3D12DescriptorHeap* descriptorHeaps[] = { mCbvHeap.Get() };
+    mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+    
+    mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
+    
+    mCommandList->IASetVertexBuffers(0, 1, &mBoxGeo->VertexBufferView());
+    mCommandList->IASetIndexBuffer(&mBoxGeo->IndexBufferView());
+    
+    //Will have to be changed to line list for the PhysX, for meshes triangles
+    mCommandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    
+    mCommandList->SetGraphicsRootDescriptorTable(0, mCbvHeap->GetGPUDescriptorHandleForHeapStart());
+    
+    //Example of how to do instancing (later)
+    //Draws one  instance of submesh "box" of Box mesh, using index array (not only vertex)
+    mCommandList->DrawIndexedInstanced(
+        mBoxGeo->DrawArgs["box"].IndexCount,
+        1, 0, 0, 0);
+    
+    ImGuiDraw(mCommandList);
+    // Indicate a state transition on the resource usage.
+     mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
+         D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
+    
+    // Done recording commands.
+    ThrowIfFailed(mCommandList->Close());
+    
+    // Add the command list to the queue for execution.
+    ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
+    mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
+    
+    // swap the back and front buffers
+    
+    //2 swap buffers (back and front) is enough for our scale
+    mCurrBackBuffer = (mCurrBackBuffer + 1) % SwapChainBufferCount;
+    
+    // Wait until frame commands are complete.  This waiting is inefficient and is
+    // done for simplicity.  Later we will show how to organize our rendering code
+    // so we do not have to wait per frame.
+    FlushCommandQueue();
+    ThrowIfFailed(mSwapChain->Present(0, 0));
+
+
+    //barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    //barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+    //mCommandList->ResourceBarrier(1, &barrier);
     //ThrowIfFailed(mCommandList->Close());
-    //
-    //// Add the command list to the queue for execution.
+
     //ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
     //mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
-    //
-    //// swap the back and front buffers
-    //ThrowIfFailed(mSwapChain->Present(0, 0));
-    //
-    ////2 swap buffers (back and front) is enough for our scale
-    //mCurrBackBuffer = (mCurrBackBuffer + 1) % SwapChainBufferCount;
-    //
-    //// Wait until frame commands are complete.  This waiting is inefficient and is
-    //// done for simplicity.  Later we will show how to organize our rendering code
-    //// so we do not have to wait per frame.
-    //FlushCommandQueue();
 
-    ImGui::EndFrame();
+    //mSwapChain->Present(0, 0);
 
+
+    //ImGui::EndFrame();
 }
 
 
@@ -367,12 +355,15 @@ void dx12Renderer::BuildBoxGeometry()
     ThrowIfFailed(D3DCreateBlob(ibByteSize, &mBoxGeo->IndexBufferCPU));
     CopyMemory(mBoxGeo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
 
+
     //creation of buffers from arrays
     mBoxGeo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
         mCommandList.Get(), vertices.data(), vbByteSize, mBoxGeo->VertexBufferUploader);
 
     mBoxGeo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
         mCommandList.Get(), indices.data(), ibByteSize, mBoxGeo->IndexBufferUploader);
+
+    //mCommandList.Get()->CopyBufferRegion(mBoxGeo.get()->IndexBufferGPU.Get(), 0, mBoxGeo.get()->IndexBufferGPU.Get(), 0, 10000);
     // With multiple arrays of vertex / index data, the single buffer with offsets can be used
     mBoxGeo->VertexByteStride = sizeof(vertex1);
     mBoxGeo->VertexBufferByteSize = vbByteSize;

@@ -214,6 +214,12 @@ void D3DApp::OnResize()
 	for (UINT i = 0; i < SwapChainBufferCount; i++)
 	{
 		ThrowIfFailed(mSwapChain->GetBuffer(i, IID_PPV_ARGS(&mSwapChainBuffer[i])));
+		if (i) {
+			mSwapChainBuffer[i].Get()->SetName(L"Buffer 1");
+		}
+		else {
+			mSwapChainBuffer[i].Get()->SetName(L"Buffer 0");
+		}
 		md3dDevice->CreateRenderTargetView(mSwapChainBuffer[i].Get(), nullptr, rtvHeapHandle);
 		rtvHeapHandle.Offset(1, mRtvDescriptorSize);
 	}

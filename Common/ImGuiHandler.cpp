@@ -41,8 +41,8 @@ bool ImGuiHandler::InitializeImGui()
 
 void ImGuiHandler::StartNewFrame()
 {
-    ImGui_ImplDX12_NewFrame();
     ImGui_ImplWin32_NewFrame();
+    ImGui_ImplDX12_NewFrame();
     ImGui::NewFrame();
 }
 
@@ -57,5 +57,10 @@ void ImGuiHandler::ImGuiRender()
 {
     ImGui::Render();
     ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), g_pd3dCommandList);
+}
+
+void ImGuiHandler::SetHwnd(HWND* a_hwnd)
+{
+    hwnd = a_hwnd;
 }
 

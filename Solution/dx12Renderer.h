@@ -25,7 +25,7 @@ public:
 private:
     virtual void OnResize()override;
     virtual void Update(const GameTimer& gt)override;
-    void ImGuiDraw();
+    void ImGuiDraw(Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> cmd);
     virtual void Draw(const GameTimer& gt)override;
 
     virtual void OnMouseDown(WPARAM btnState, int x, int y)override;

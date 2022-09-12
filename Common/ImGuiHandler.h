@@ -31,6 +31,7 @@ public:
 	void StartNewFrame();
 	void CleanUp();
 	void ImGuiRender();
+	void SetHwnd(HWND* hwnd);
 
 	ImGuiIO* GetImGuiIO() { return &io; }
 
